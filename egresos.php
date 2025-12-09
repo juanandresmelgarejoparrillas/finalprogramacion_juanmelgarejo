@@ -153,102 +153,102 @@ $res_list = $conexion->query($sql_list);
             </table>
         </div>
     </div>
+</div> <!-- Cierre del Card -->
 
-    <!-- Modal Nuevo Egreso -->
-    <div class="modal fade" id="modalNuevoEgreso" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Registrar Nuevo Egreso</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST">
-                    <div class="modal-body">
-                        <input type="hidden" name="accion" value="nuevo_egreso">
+<!-- Modal Nuevo Egreso (Fuera del Card) -->
+<div class="modal fade" id="modalNuevoEgreso" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Registrar Nuevo Egreso</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="accion" value="nuevo_egreso">
 
+                    <div class="mb-3">
+                        <label class="form-label">Tipo de Egreso</label>
+                        <select name="tipo_egreso" id="tipo_egreso_select" class="form-select" required
+                            onchange="toggleEgresoFields()">
+                            <option value="factura_proveedor">Factura de Proveedor</option>
+                            <option value="gasto_general">Gasto General / Caja Chica</option>
+                        </select>
+                    </div>
+
+                    <!-- Campos Factura Proveedor -->
+                    <div id="campos_proveedor">
                         <div class="mb-3">
-                            <label class="form-label">Tipo de Egreso</label>
-                            <select name="tipo_egreso" id="tipo_egreso_select" class="form-select" required
-                                onchange="toggleEgresoFields()">
-                                <option value="factura_proveedor">Factura de Proveedor</option>
-                                <option value="gasto_general">Gasto General / Caja Chica</option>
+                            <label class="form-label">Proveedor</label>
+                            <select name="proveedor_id" class="form-select">
+                                <?php
+                                $proveedores->data_seek(0);
+                                while ($p = $proveedores->fetch_assoc()): ?>
+                                    <option value="<?php echo $p['id']; ?>"><?php echo $p['nombre']; ?></option>
+                                <?php endwhile; ?>
                             </select>
                         </div>
-
-                        <!-- Campos Factura Proveedor -->
-                        <div id="campos_proveedor">
-                            <div class="mb-3">
-                                <label class="form-label">Proveedor</label>
-                                <select name="proveedor_id" class="form-select">
-                                    <?php
-                                    $proveedores->data_seek(0);
-                                    while ($p = $proveedores->fetch_assoc()): ?>
-                                        <option value="<?php echo $p['id']; ?>"><?php echo $p['nombre']; ?></option>
-                                    <?php endwhile; ?>
-                                </select>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Número de Factura</label>
-                                <input type="text" name="numero_factura" class="form-control">
-                            </div>
-                        </div>
-
-                        <!-- Campos Gasto General -->
-                        <div id="campos_gasto" style="display:none;">
-                            <div class="mb-3">
-                                <label class="form-label">Referencia (Ticket / Comprobante)</label>
-                                <input type="text" name="referencia" class="form-control"
-                                    placeholder="Ej: Ticket Peaje">
-                            </div>
-                        </div>
-
                         <div class="mb-3">
-                            <label class="form-label">Descripción / Detalle</label>
-                            <textarea name="descripcion" class="form-control" rows="2"></textarea>
+                            <label class="form-label">Número de Factura</label>
+                            <input type="text" name="numero_factura" class="form-control">
                         </div>
+                    </div>
 
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Fecha</label>
-                                <input type="date" name="fecha" class="form-control"
-                                    value="<?php echo date('Y-m-d'); ?>" required>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Monto Total</label>
-                                <input type="number" step="0.01" name="monto" class="form-control" required>
-                            </div>
+                    <!-- Campos Gasto General -->
+                    <div id="campos_gasto" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label">Referencia (Ticket / Comprobante)</label>
+                            <input type="text" name="referencia" class="form-control" placeholder="Ej: Ticket Peaje">
                         </div>
+                    </div>
 
+                    <div class="mb-3">
+                        <label class="form-label">Descripción / Detalle</label>
+                        <textarea name="descripcion" class="form-control" rows="2"></textarea>
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-primary">Guardar Egreso</button>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Fecha</label>
+                            <input type="date" name="fecha" class="form-control" value="<?php echo date('Y-m-d'); ?>"
+                                required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Monto Total</label>
+                            <input type="number" step="0.01" name="monto" class="form-control" required>
+                        </div>
                     </div>
-                </form>
-            </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar Egreso</button>
+                </div>
+            </form>
         </div>
     </div>
+</div>
 
-    <script>
-        function toggleEgresoFields() {
-            const tipo = document.getElementById('tipo_egreso_select').value;
-            const camposProv = document.getElementById('campos_proveedor');
-            const camposGasto = document.getElementById('campos_gasto');
+<script>
+    function toggleEgresoFields() {
+        const tipo = document.getElementById('tipo_egreso_select').value;
+        const camposProv = document.getElementById('campos_proveedor');
+        const camposGasto = document.getElementById('campos_gasto');
 
-            if (tipo === 'factura_proveedor') {
-                camposProv.style.display = 'block';
-                camposGasto.style.display = 'none';
-                camposProv.querySelector('select').setAttribute('required', 'required');
-                camposProv.querySelector('input').setAttribute('required', 'required');
-                camposGasto.querySelector('input').removeAttribute('required');
-            } else {
-                camposProv.style.display = 'none';
-                camposGasto.style.display = 'block';
-                camposProv.querySelector('select').removeAttribute('required');
-                camposProv.querySelector('input').removeAttribute('required');
-                camposGasto.querySelector('input').setAttribute('required', 'required');
-            }
+        if (tipo === 'factura_proveedor') {
+            camposProv.style.display = 'block';
+            camposGasto.style.display = 'none';
+            camposProv.querySelector('select').setAttribute('required', 'required');
+            camposProv.querySelector('input').setAttribute('required', 'required');
+            camposGasto.querySelector('input').removeAttribute('required');
+        } else {
+            camposProv.style.display = 'none';
+            camposGasto.style.display = 'block';
+            camposProv.querySelector('select').removeAttribute('required');
+            camposProv.querySelector('input').removeAttribute('required');
+            camposGasto.querySelector('input').setAttribute('required', 'required');
         }
-    </script>
+    }
+</script>
 
-    <?php require_once 'footer.php'; ?>
+<?php require_once 'footer.php'; ?>

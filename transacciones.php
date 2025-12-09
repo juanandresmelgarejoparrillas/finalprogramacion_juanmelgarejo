@@ -42,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $numero = $_POST['numero'];
         $letra = $_POST['letra'];      // A, B, C...
         $condicion = $_POST['condicion']; // 'contado' o 'cuenta_corriente'
+        $descripcion = $_POST['descripcion'] ?? '';
 
         // Cálculo inicial de Saldo Pendiente (Deuda).
         // Si es 'cuenta_corriente', la deuda es total.
@@ -49,9 +50,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $saldo_pendiente = ($condicion == 'cuenta_corriente') ? $monto : 0;
 
         // Insertamos la FACTURA en la base de datos.
-        $sql = "INSERT INTO transacciones (tipo, tipo_entidad, entidad_id, monto, fecha, numero_comprobante, letra, condicion_pago, saldo_pendiente, estado) VALUES ('factura', ?, ?, ?, ?, ?, ?, ?, ?, 1)";
+        $sql = "INSERT INTO transacciones (tipo, tipo_entidad, entidad_id, monto, fecha, numero_comprobante, letra, condicion_pago, saldo_pendiente, descripcion, estado) VALUES ('factura', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)";
         $stmt = $conexion->prepare($sql);
-        $stmt->bind_param("sidssssd", $tipo_entidad, $entidad_id, $monto, $fecha, $numero, $letra, $condicion, $saldo_pendiente);
+        $stmt->bind_param("sidssssds", $tipo_entidad, $entidad_id, $monto, $fecha, $numero, $letra, $condicion, $saldo_pendiente, $descripcion);
 
         if ($stmt->execute()) {
             $factura_id = $stmt->insert_id; // Obtenemos el ID de la factura recién creada.
@@ -416,7 +417,7 @@ if ($entidad_id) {
                                             // Buscamos si tiene NC asociadas que sumen el total.
                                             $chk_nc = $conexion->query("SELECT SUM(monto) as total_nc FROM transacciones WHERE transaccion_relacionada_id = {$f['id']} AND tipo = 'nota_credito' AND estado = 1");
                                             $row_nc = $chk_nc->fetch_assoc();
-                                            
+
                                             if ($row_nc['total_nc'] >= $f['monto'])
                                                 $anulada_por_nc = true;
                                         }
@@ -424,10 +425,10 @@ if ($entidad_id) {
                                         // Definimos el color y el texto según el estado.
                                         $clase_estado = $pagada ? 'text-success' : 'text-danger';
                                         $texto_estado = $pagada ? 'PAGADA' : 'PENDIENTE';
-                                        
+
                                         if ($es_contado)
                                             $texto_estado = 'PAGADA (Contado)';
-                                        
+
                                         if ($anulada_por_nc) {
                                             $texto_estado = 'ANULADA POR NC';
                                             $clase_estado = 'text-warning'; // Amarillo
@@ -452,7 +453,7 @@ if ($entidad_id) {
                                         <td class="<?php echo $clase_estado; ?> fw-bold"><?php echo $texto_estado; ?></td>
                                         <td>
                                             <!-- Botones de Acción -->
-                                            
+
                                             <!-- 1. Pagar (Solo si debe plata y no es contado) -->
                                             <?php if ($es_factura_nd && !$es_contado && !$pagada): ?>
                                                 <button class="btn btn-sm btn-success"
@@ -528,6 +529,11 @@ if ($entidad_id) {
                                 <option value="contado">Contado</option>
                                 <option value="cuenta_corriente">Cuenta Corriente</option>
                             </select></div>
+                        <div class="mb-3">
+                            <label>Descripción / Notas</label>
+                            <textarea name="descripcion" class="form-control" rows="2"
+                                placeholder="Detalle opcional..."></textarea>
+                        </div>
                     </div>
                     <div class="modal-footer"><button type="button" class="btn btn-secondary"
                             data-bs-dismiss="modal">Cancelar</button><button type="submit"
