@@ -1,0 +1,96 @@
+/* assets/css/style.css */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@300;400;700&display=swap');
+
+:root {
+    --neon-blue: #00f3ff;
+    --neon-purple: #bc13fe;
+    --dark-bg: #0a0a12;
+    --panel-bg: #15151e;
+    --text-color: #e0e0e0;
+}
+
+body {
+    background-color: var(--dark-bg);
+    color: var(--text-color);
+    font-family: 'Roboto', sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6, .navbar-brand {
+    font-family: 'Orbitron', sans-serif;
+    color: var(--neon-blue);
+    text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+}
+
+.navbar {
+    background-color: var(--panel-bg) !important;
+    border-bottom: 1px solid var(--neon-purple);
+    box-shadow: 0 0 15px rgba(188, 19, 254, 0.2);
+}
+
+.card {
+    background-color: var(--panel-bg);
+    border: 1px solid var(--neon-blue);
+    box-shadow: 0 0 10px rgba(0, 243, 255, 0.1);
+}
+
+.btn-primary {
+    background-color: transparent;
+    border: 1px solid var(--neon-blue);
+    color: var(--neon-blue);
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    background-color: var(--neon-blue);
+    color: var(--dark-bg);
+    box-shadow: 0 0 20px var(--neon-blue);
+}
+
+.btn-danger {
+    background-color: transparent;
+    border: 1px solid #ff0055;
+    color: #ff0055;
+}
+
+.btn-danger:hover {
+    background-color: #ff0055;
+    color: white;
+    box-shadow: 0 0 20px #ff0055;
+}
+
+.form-control {
+    background-color: #0f0f16;
+    border: 1px solid #333;
+    color: white;
+}
+
+.form-control:focus {
+    background-color: #1a1a24;
+    border-color: var(--neon-purple);
+    color: white;
+    box-shadow: 0 0 10px rgba(188, 19, 254, 0.3);
+}
+
+.table {
+    color: var(--text-color);
+}
+
+.table-hover tbody tr:hover {
+    color: var(--text-color);
+    background-color: rgba(0, 243, 255, 0.05);
+}
+
+/* Login Page Specifics */
+body.login-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    padding: 2rem;
+    border-radius: 10px;
+}
