@@ -1,5 +1,6 @@
-</div> <!-- End Container -->
+</div> <!-- Fin del contenedor principal (iniciado en header.php) -->
 
+<!-- Pie de página (Footer) -->
 <footer class="text-center mt-5 py-3" style="color: #666;">
     <p>&copy; <?php echo date('Y'); ?> Sistema de Gestión Futurista. Todos los derechos reservados.</p>
 </footer>
@@ -9,11 +10,13 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <!-- Librería para el gráfico de torta -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Script para Modo Oscuro -->
+<script src="assets/js/theme.js"></script>
 <!-- Nuestro script para el buscador de tablas -->
 <script src="assets/js/search_table.js"></script>
 <!-- Nuestro script principal (lógica de gráficos y modales) -->
 <script src="assets/js/main.js"></script>
 
-</body>
+</body> <!-- Fin del cuerpo de la página -->
 
-</html>
+</html> <!-- Fin del documento HTML -->

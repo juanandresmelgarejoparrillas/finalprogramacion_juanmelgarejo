@@ -1,48 +1,54 @@
 <?php
+// balance.php - Visor Simple de Cuentas Corrientes
+// Esta página permite ver la historia de movimientos y el saldo adeudado de un Cliente o Proveedor.
+
 require_once 'config.php';
 require_once 'auth.php';
-verificar_autenticacion();
+verificar_autenticacion(); // Paso 1: Verificar que esté logueado.
 require_once 'header.php';
 
+// Paso 2: Obtener a quién estamos buscando (Cliente o Proveedor) desde la URL
+// Si no se especifica, asumimos 'cliente'.
 $tipo_entidad = isset($_GET['tipo']) ? $_GET['tipo'] : 'cliente';
 $entidad_id = isset($_GET['id']) ? $_GET['id'] : '';
 
-// Obtener lista para el buscador
+// Paso 3: Cargar las listas para el menú desplegable (Select)
+// Buscamos todas las personas activas para que el usuario pueda elegir.
 $clientes = $conexion->query("SELECT id, nombre FROM clientes WHERE estado = 1");
 $proveedores = $conexion->query("SELECT id, nombre FROM proveedores WHERE estado = 1");
 
-$historial = [];
-$saldo = 0;
+$historial = []; // Aquí guardaremos la lista de movimientos.
+$saldo = 0;      // Aquí iremos sumando/restando el dinero.
 
+// Paso 4: Si el usuario ya eligió a alguien ($entidad_id tiene valor)
 if ($entidad_id) {
-    // Calcular saldo e historial
-    // Saldo Cliente: Facturas (Debe) - Recibos (Haber) - Notas Credito (Haber) + Notas Debito (Debe)
-    // Saldo Proveedor: Facturas (Haber - lo que debemos) - Recibos (Debe - lo que pagamos) ...
-
+    // Buscamos todas las transacciones de esa persona, ordenadas por fecha (de la más vieja a la nueva).
+    // Esto es necesario para ir calculando el "saldo acumulado" fila por fila.
     $sql = "SELECT * FROM transacciones WHERE tipo_entidad = ? AND entidad_id = ? AND estado = 1 ORDER BY fecha ASC, id ASC";
     $stmt = $conexion->prepare($sql);
     $stmt->bind_param("si", $tipo_entidad, $entidad_id);
     $stmt->execute();
     $res = $stmt->get_result();
 
+    // Recorremos cada movimiento para calcular los numeros...
     while ($row = $res->fetch_assoc()) {
         $monto = $row['monto'];
-        $tipo = $row['tipo'];
+        $tipo = $row['tipo']; // ¿Fue factura? ¿Recibo?
 
-        // Lógica Contable:
+        // --- LÓGICA DE SUMA Y RESTA (CONTABILIDAD BÁSICA) ---
         if ($tipo_entidad == 'cliente') {
-            // CLIENTES:
-            // - Factura/ND (Nos deben plata) -> SUMA al saldo.
-            // - Recibo/NC (Nos pagaron o descontamos) -> RESTA al saldo.
+            // SI ES CLIENTE (Ellos nos deben a nosotros):
+            // - Factura o Nota de Débito: Aumenta la deuda (SUMA).
+            // - Recibo o Nota de Crédito: Disminuye la deuda (RESTA).
             if ($tipo == 'factura' || $tipo == 'nota_debito') {
                 $saldo += $monto;
             } else {
                 $saldo -= $monto;
             }
         } else {
-            // PROVEEDORES:
-            // - Factura (Les debemos plata) -> SUMA al saldo (deuda).
-            // - Recibo (Les pagamos) -> RESTA a la deuda.
+            // SI ES PROVEEDOR (Nosotros le debemos a ellos):
+            // - Factura (Compra): Aumenta nuestra deuda con ellos (SUMA).
+            // - Recibo (Pago) o NC: Disminuye nuestra deuda (RESTA).
             if ($tipo == 'factura' || $tipo == 'nota_debito') {
                 $saldo += $monto;
             } else {
@@ -50,7 +56,10 @@ if ($entidad_id) {
             }
         }
 
+        // Guardamos el saldo parcial en este momento de la historia.
         $row['saldo_acumulado'] = $saldo;
+
+        // Agregamos este movimiento a la lista final.
         $historial[] = $row;
     }
 }

@@ -1,42 +1,46 @@
 <?php
-// egresos.php - Gestión de Egresos (Gastos)
-// Aquí registramos todo lo que sea SALIDA de dinero: Facturas de proveedores o gastos varios.
+// egresos.php - Gestión de Egresos (Salidas de dinero)
+// Aquí registramos cuando pagamos algo, ya sea una factura de compra o un gasto chico.
 
 require_once 'config.php';
 require_once 'auth.php';
-verificar_autenticacion();
+verificar_autenticacion(); // Verificar que esté logueado.
 require_once 'header.php';
 
-// --- LÓGICA PARA GUARDAR UN NUEVO EGRESO ---
+// --- PROCESAR FORMULARIO (Cuando apretamos "Guardar") ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['accion']) && $_POST['accion'] == 'nuevo_egreso') {
-    $tipo_egreso = $_POST['tipo_egreso']; // Puede ser 'factura_proveedor' o 'gasto_general'
+    // 1. Recibimos los datos del formulario.
+    $tipo_egreso = $_POST['tipo_egreso']; // ¿Es Factura Proveedor o Gasto Vario?
     $fecha = $_POST['fecha'];
     $monto = $_POST['monto'];
-    $descripcion = $_POST['descripcion'] ?? '';
+    $descripcion = $_POST['descripcion'] ?? ''; // Descripción opcional.
 
-    // OPCIÓN A: Es una FACTURA de un PROVEEDOR (Genera Deuda/Saldo Pendiente)
+    // CASO A: FACTURA DE UN PROVEEDOR
+    // Esto significa que registramos una deuda "formal" con un proveedor del sistema.
     if ($tipo_egreso == 'factura_proveedor') {
         $entidad_id = $_POST['proveedor_id']; // ¿A quién le debemos?
-        $numero = $_POST['numero_factura'];
+        $numero = $_POST['numero_factura'];   // Número del papel de la factura.
 
-        $tipo = 'factura';          // En BD es una 'factura'
-        $tipo_entidad = 'proveedor';// De un 'proveedor'
+        $tipo = 'factura';           // En la base de datos se guarda como 'factura'.
+        $tipo_entidad = 'proveedor'; // Marcamos que corresponde a un proveedor.
 
-        // Al cargar una factura de compra, debemos esa plata -> Aumenta el saldo pendiente
+        // Al cargar una factura de compra que debemos pagar, nace una deuda (Saldo Pendiente).
         $saldo_pendiente = $monto;
 
+        // Guardamos en la base de datos.
         $sql = "INSERT INTO transacciones (tipo, tipo_entidad, entidad_id, monto, fecha, numero_comprobante, descripcion, estado, saldo_pendiente) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)";
         $stmt = $conexion->prepare($sql);
         $stmt->bind_param("ssidsssd", $tipo, $tipo_entidad, $entidad_id, $monto, $fecha, $numero, $descripcion, $saldo_pendiente);
 
     } else {
-        // OPCIÓN B: Es un GASTO GENERAL (Caja Chica, Taxi, Librería, etc)
-        // No necesariamente asociado a un proveedor del sistema.
+        // CASO B: GASTO GENERAL (Caja Chica)
+        // Son gastos del momento: taxi, kiosco, artículos de limpieza.
+        // No se vinculan necesariamente a un proveedor registrado.
 
-        $tipo = 'gasto';
-        $tipo_entidad = 'proveedor'; // Lo marcamos genéricamente
-        $entidad_id = 0;             // ID 0 porque no es un proveedor registrado específico
-        $numero = $_POST['referencia']; // Ticket o referencia
+        $tipo = 'gasto';             // Tipo especial 'gasto'.
+        $tipo_entidad = 'proveedor'; // Lo ponemos generico.
+        $entidad_id = 0;             // ID 0 (Sin proveedor específico).
+        $numero = $_POST['referencia']; // Ticket, comprobante, etc.
 
         // UN GASTO GENERAL SE PAGA EN EL MOMENTO.
         // Por lo tanto, no genera deuda a futuro. Saldo pendiente = 0.
@@ -54,10 +58,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['accion']) && $_POST['a
     }
 }
 
-// Obtener Proveedores para el select
+// Paso 2: Preparar listas para mostrar en pantalla
+
+// Lista de Proveedores (para el formulario de nuevo egreso)
 $proveedores = $conexion->query("SELECT * FROM proveedores WHERE estado = 1 ORDER BY nombre ASC");
 
-// Obtener Listado de Egresos (Facturas Proveedor + Gastos)
+// Lista Histórica de Egresos (para la tabla de abajo)
+// Usamos LEFT JOIN para traer el nombre del proveedor si existe.
 $sql_list = "SELECT t.*, p.nombre as nombre_proveedor 
              FROM transacciones t 
              LEFT JOIN proveedores p ON t.entidad_id = p.id 
@@ -69,13 +76,11 @@ $res_list = $conexion->query($sql_list);
 
 <div class="row mb-4">
     <div class="col-md-8">
-        <h2 style="color: var(--neon-purple); text-shadow: 0 0 5px rgba(188, 19, 254, 0.5);">GESTIÓN DE EGRESOS</h2>
-        <p class="text-white-50">Registre Facturas de Proveedores y Gastos Generales.</p>
+        <h2>GESTIÓN DE EGRESOS</h2>
+        <p class="text-muted">Registre Facturas de Proveedores y Gastos Generales.</p>
     </div>
     <div class="col-md-4 text-end">
-        <button class="btn btn-lg w-100"
-            style="background-color: var(--neon-purple); border: none; color: white; box-shadow: 0 0 10px var(--neon-purple);"
-            data-bs-toggle="modal" data-bs-target="#modalNuevoEgreso">
+        <button class="btn btn-primary btn-lg w-100" data-bs-toggle="modal" data-bs-target="#modalNuevoEgreso">
             <i class="fas fa-plus-circle"></i> Nuevo Egreso
         </button>
     </div>
@@ -88,7 +93,7 @@ $res_list = $conexion->query($sql_list);
     <div class="alert alert-danger"><?php echo $error; ?></div>
 <?php endif; ?>
 
-<div class="card" style="border: 1px solid var(--neon-purple); background-color: var(--card-bg);">
+<div class="card">
     <div class="card-body">
         <div class="row mb-3">
             <div class="col-md-3">
@@ -103,9 +108,9 @@ $res_list = $conexion->query($sql_list);
             </div>
         </div>
         <div class="table-responsive">
-            <table class="table table-hover table-dark align-middle">
+            <table class="table table-hover align-middle">
                 <thead>
-                    <tr style="border-bottom: 2px solid var(--neon-purple);">
+                    <tr>
                         <th>Fecha</th>
                         <th>Tipo</th>
                         <th>Proveedor / Detalle</th>
@@ -152,9 +157,9 @@ $res_list = $conexion->query($sql_list);
     <!-- Modal Nuevo Egreso -->
     <div class="modal fade" id="modalNuevoEgreso" tabindex="-1">
         <div class="modal-dialog">
-            <div class="modal-content" style="background-color: var(--panel-bg); border: 1px solid var(--neon-purple);">
+            <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title text-white">Registrar Nuevo Egreso</h5>
+                    <h5 class="modal-title">Registrar Nuevo Egreso</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form method="POST">
@@ -162,8 +167,8 @@ $res_list = $conexion->query($sql_list);
                         <input type="hidden" name="accion" value="nuevo_egreso">
 
                         <div class="mb-3">
-                            <label class="text-white">Tipo de Egreso</label>
-                            <select name="tipo_egreso" id="tipo_egreso_select" class="form-control" required
+                            <label class="form-label">Tipo de Egreso</label>
+                            <select name="tipo_egreso" id="tipo_egreso_select" class="form-select" required
                                 onchange="toggleEgresoFields()">
                                 <option value="factura_proveedor">Factura de Proveedor</option>
                                 <option value="gasto_general">Gasto General / Caja Chica</option>
@@ -173,8 +178,8 @@ $res_list = $conexion->query($sql_list);
                         <!-- Campos Factura Proveedor -->
                         <div id="campos_proveedor">
                             <div class="mb-3">
-                                <label class="text-white">Proveedor</label>
-                                <select name="proveedor_id" class="form-control">
+                                <label class="form-label">Proveedor</label>
+                                <select name="proveedor_id" class="form-select">
                                     <?php
                                     $proveedores->data_seek(0);
                                     while ($p = $proveedores->fetch_assoc()): ?>
@@ -183,7 +188,7 @@ $res_list = $conexion->query($sql_list);
                                 </select>
                             </div>
                             <div class="mb-3">
-                                <label class="text-white">Número de Factura</label>
+                                <label class="form-label">Número de Factura</label>
                                 <input type="text" name="numero_factura" class="form-control">
                             </div>
                         </div>
@@ -191,25 +196,25 @@ $res_list = $conexion->query($sql_list);
                         <!-- Campos Gasto General -->
                         <div id="campos_gasto" style="display:none;">
                             <div class="mb-3">
-                                <label class="text-white">Referencia (Ticket / Comprobante)</label>
+                                <label class="form-label">Referencia (Ticket / Comprobante)</label>
                                 <input type="text" name="referencia" class="form-control"
                                     placeholder="Ej: Ticket Peaje">
                             </div>
                         </div>
 
                         <div class="mb-3">
-                            <label class="text-white">Descripción / Detalle</label>
+                            <label class="form-label">Descripción / Detalle</label>
                             <textarea name="descripcion" class="form-control" rows="2"></textarea>
                         </div>
 
                         <div class="row">
                             <div class="col-md-6 mb-3">
-                                <label class="text-white">Fecha</label>
+                                <label class="form-label">Fecha</label>
                                 <input type="date" name="fecha" class="form-control"
                                     value="<?php echo date('Y-m-d'); ?>" required>
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label class="text-white">Monto Total</label>
+                                <label class="form-label">Monto Total</label>
                                 <input type="number" step="0.01" name="monto" class="form-control" required>
                             </div>
                         </div>
@@ -217,8 +222,7 @@ $res_list = $conexion->query($sql_list);
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn"
-                            style="background-color: var(--neon-purple); color: white;">Guardar Egreso</button>
+                        <button type="submit" class="btn btn-primary">Guardar Egreso</button>
                     </div>
                 </form>
             </div>

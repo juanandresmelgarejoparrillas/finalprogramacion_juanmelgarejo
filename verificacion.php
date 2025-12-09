@@ -1,16 +1,22 @@
 <?php
-// verificacion.php
-require_once 'db.php';
-require_once 'header.php';
+// verificacion.php - Tablero de Salud del Sistema
+// Esta página le muestra al técnico o admin si todo funciona bien.
+// Cuenta cuántos datos hay y si hay errores graves de integridad.
 
-// Contadores
+require_once 'db.php';     // Conexión
+require_once 'header.php'; // Diseño
+
+// 1. Contamos cuántas cosas tenemos en cada tabla (Estadísticas simples)
 $cnt_users = $conn->query("SELECT COUNT(*) as c FROM usuarios WHERE status=1")->fetch_assoc()['c'];
 $cnt_cli = $conn->query("SELECT COUNT(*) as c FROM clientes WHERE status=1")->fetch_assoc()['c'];
 $cnt_prov = $conn->query("SELECT COUNT(*) as c FROM proveedores WHERE status=1")->fetch_assoc()['c'];
 $cnt_trans = $conn->query("SELECT COUNT(*) as c FROM transacciones WHERE status=1")->fetch_assoc()['c'];
 
-// Verificar integridad básica (ej: usuarios sin email)
+// 2. Chequeo de Salud (Integrity Check)
+// Buscamos usuarios que no tengan email, lo cual sería un error de datos.
 $integrity_check = $conn->query("SELECT COUNT(*) as c FROM usuarios WHERE email IS NULL")->fetch_assoc()['c'];
+
+// Definimos si el sistema está "Verde" (OK) o "Rojo" (Alerta) según si encontramos errores.
 $status_system = ($integrity_check == 0) ? "OPERATIVO" : "ADVERTENCIA";
 $color_status = ($integrity_check == 0) ? "var(--neon-cyan)" : "var(--neon-pink)";
 ?>

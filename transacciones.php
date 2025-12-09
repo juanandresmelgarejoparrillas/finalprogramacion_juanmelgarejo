@@ -1,9 +1,15 @@
 <?php
+// transacciones.php - Núcleo de Gestión de Movimientos
+// Esta es la página más importante. Aquí se crean Facturas, Recibos, Notas de Crédito, etc.
+// Maneja toda la lógica de cuentas corrientes y pagos.
+
 require_once 'config.php';
 require_once 'auth.php';
-verificar_autenticacion();
+verificar_autenticacion(); // Paso 1: Seguridad.
 
 // --- AJAX: OBTENER RELACIONADOS ---
+// Esto sirve para cuando apretamos el botón "Ver relaciones" (el ojito).
+// Devuelve una lista de documentos vinculados (ej: Recibos vinculados a una factura) sin recargar la página.
 if (isset($_GET['ajax_relacionados'])) {
     $id = intval($_GET['ajax_relacionados']);
     $sql = "SELECT * FROM transacciones WHERE transaccion_relacionada_id = $id AND estado = 1 ORDER BY fecha DESC";
@@ -12,45 +18,47 @@ if (isset($_GET['ajax_relacionados'])) {
     while ($row = $res->fetch_assoc()) {
         $docs[] = $row;
     }
+    // Devolvemos la respuesta en formato JSON (datos puros para Javascript).
     header('Content-Type: application/json');
     echo json_encode($docs);
     exit;
 }
 
-require_once 'header.php';
+require_once 'header.php'; // Parte visual.
 
-$mensaje = "";
-$error = "";
+$mensaje = ""; // Mensaje verde (éxito)
+$error = "";   // Mensaje rojo (fallo)
 
-// --- LÓGICA POST (PROCESAR FORMULARIOS) ---
+// --- LÓGICA POST (PROCESAR SI EL USUARIO GUARDÓ ALGO) ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     // 1. NUEVA FACTURA
+    // Se ejecuta cuando llenamos el formulario "Nueva Factura".
     if (isset($_POST['accion']) && $_POST['accion'] == 'nueva_factura') {
-        $tipo_entidad = $_POST['tipo_entidad'];
-        $entidad_id = $_POST['entidad_id'];
+        $tipo_entidad = $_POST['tipo_entidad']; // ¿Cliente o Proveedor?
+        $entidad_id = $_POST['entidad_id'];     // ¿Quién exactamente?
         $fecha = $_POST['fecha'];
         $monto = $_POST['monto'];
         $numero = $_POST['numero'];
-        $letra = $_POST['letra'];
-        $condicion = $_POST['condicion'];
+        $letra = $_POST['letra'];      // A, B, C...
+        $condicion = $_POST['condicion']; // 'contado' o 'cuenta_corriente'
 
-        // Si es cuenta corriente, el cliente que "debe" (saldo pendiente = total).
-        // Si es Contado, la deuda nace y muere en el instante (saldo = 0, pero ver abajo).
-        /* CORRECCIÓN: Para mantener consistencia, si es contado, generamos la deuda 
-           y luego generamos un recibo automático que la salda. */
+        // Cálculo inicial de Saldo Pendiente (Deuda).
+        // Si es 'cuenta_corriente', la deuda es total.
+        // Si es 'contado', conceptualmente la deuda nace y muere, pero por orden técnico la creamos primero.
         $saldo_pendiente = ($condicion == 'cuenta_corriente') ? $monto : 0;
 
+        // Insertamos la FACTURA en la base de datos.
         $sql = "INSERT INTO transacciones (tipo, tipo_entidad, entidad_id, monto, fecha, numero_comprobante, letra, condicion_pago, saldo_pendiente, estado) VALUES ('factura', ?, ?, ?, ?, ?, ?, ?, ?, 1)";
         $stmt = $conexion->prepare($sql);
         $stmt->bind_param("sidssssd", $tipo_entidad, $entidad_id, $monto, $fecha, $numero, $letra, $condicion, $saldo_pendiente);
 
         if ($stmt->execute()) {
-            $factura_id = $stmt->insert_id;
+            $factura_id = $stmt->insert_id; // Obtenemos el ID de la factura recién creada.
 
             // CASO ESPECIAL: VENTA DE CONTADO
+            // Si fue contado, generamos automáticamente el RECIBO de pago para que la deuda quede saldada.
             if ($condicion == 'contado') {
-                // Generamos un RECIBO automático vinculado a esta factura
                 $sql_recibo = "INSERT INTO transacciones (tipo, tipo_entidad, entidad_id, monto, fecha, transaccion_relacionada_id, estado) VALUES ('recibo', ?, ?, ?, ?, ?, 1)";
                 $stmt_recibo = $conexion->prepare($sql_recibo);
                 $stmt_recibo->bind_param("sidsi", $tipo_entidad, $entidad_id, $monto, $fecha, $factura_id);
@@ -67,6 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     // 1.5 NUEVA NOTA DE DÉBITO (SOLO ADMIN)
     // La Nota de Débito AUMENTA la deuda del cliente (ej: cheque rechazado, interés por mora).
+    // Funciona casi igual que una factura a nivel contable.
     if (isset($_POST['accion']) && $_POST['accion'] == 'nueva_nota_debito') {
         if (es_admin()) {
             $tipo_entidad = $_POST['tipo_entidad'];
@@ -76,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $numero = $_POST['numero'];
             $letra = $_POST['letra'];
 
-            // La ND siempre genera saldo pendiente (deuda)
+            // La ND siempre genera saldo pendiente (deuda), no puede ser de contado directo aquí.
             $saldo_pendiente = $monto;
             $condicion = 'cuenta_corriente';
 
@@ -90,35 +99,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $error = "Error al registrar ND: " . $conexion->error;
             }
         } else {
-            $error = "Acceso denegado.";
+            $error = "Acceso denegado."; // Seguridad extra.
         }
     }
 
     // 2. NUEVO RECIBO (IMPUTADO A UNA FACTURA ESPECÍFICA)
-    // El cliente paga una factura puntual.
+    // Cuando entramos a pagar una factura puntual apretando el botón verde "Recibo".
     if (isset($_POST['accion']) && $_POST['accion'] == 'nuevo_recibo') {
         $factura_id = $_POST['factura_id'];
         $monto_recibo = $_POST['monto'];
         $fecha = $_POST['fecha'];
 
-        // Buscamos la factura original para verificar saldos
+        // Paso A: Buscamos la factura original para ver cuánto debe.
         $qry = $conexion->query("SELECT * FROM transacciones WHERE id = $factura_id");
         $factura = $qry->fetch_assoc();
 
+        // Validación: No podemos pagar más de lo que se debe.
         if ($monto_recibo > $factura['saldo_pendiente']) {
             $error = "Error: El monto ($$monto_recibo) supera el saldo pendiente ($" . $factura['saldo_pendiente'] . ").";
         } else {
             $tipo_entidad = $factura['tipo_entidad'];
             $entidad_id = $factura['entidad_id'];
 
-            // Creamos el Recibo vinculado a la factura
+            // Paso B: Creamos el RECIBO vinculado a esa factura.
             $sql = "INSERT INTO transacciones (tipo, tipo_entidad, entidad_id, monto, fecha, transaccion_relacionada_id, estado) VALUES ('recibo', ?, ?, ?, ?, ?, 1)";
             $stmt = $conexion->prepare($sql);
             $stmt->bind_param("sidsi", $tipo_entidad, $entidad_id, $monto_recibo, $fecha, $factura_id);
 
             if ($stmt->execute()) {
-                // ACTUALIZAMOS EL SALDO PENDIENTE de la factura original
-                // Nuevo saldo = Saldo Viejo - Pago
+                // Paso C: ACTUALIZAMOS EL SALDO de la factura original.
+                // Restamos lo que se pagó.
                 $nuevo_saldo = $factura['saldo_pendiente'] - $monto_recibo;
                 $upd = $conexion->prepare("UPDATE transacciones SET saldo_pendiente = ? WHERE id = ?");
                 $upd->bind_param("di", $nuevo_saldo, $factura_id);
@@ -131,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 
     // 2.5 NUEVO RECIBO GENERAL (DESDE BOTÓN SUPERIOR)
-    // Puede ser un pago a cuenta (sin factura) o imputado a una seleccionada.
+    // Recibos globales que pueden o no estar vinculados a una factura específica.
     if (isset($_POST['accion']) && $_POST['accion'] == 'nuevo_recibo_general') {
         $factura_id = !empty($_POST['factura_id']) ? $_POST['factura_id'] : null;
         $monto_recibo = $_POST['monto'];
@@ -140,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $entidad_id = $_POST['entidad_id'];
 
         if ($factura_id) {
-            // LÓGICA IDÉNTICA AL PUNTO 2 (Con imputación)
+            // CASO 1: Eligió imputar a una factura. Lógica idéntica al punto anterior.
             $qry = $conexion->query("SELECT * FROM transacciones WHERE id = $factura_id");
             $factura = $qry->fetch_assoc();
 
@@ -162,9 +172,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 }
             }
         } else {
-            // PAGO A CUENTA (Sin factura relacionada)
-            // Se registra el recibo 'suelto'. El saldo global del cliente bajará (ver Balance), 
-            // pero ninguna factura específica baja su deuda.
+            // CASO 2: PAGO A CUENTA (Sin factura relacionada)
+            // Es plata que nos dan "a cuenta" de futuras compras.
+            // Se registra el recibo 'suelto'. Baja el saldo global pero no cancela ninguna factura específica.
             $sql = "INSERT INTO transacciones (tipo, tipo_entidad, entidad_id, monto, fecha, estado) VALUES ('recibo', ?, ?, ?, ?, 1)";
             $stmt = $conexion->prepare($sql);
             $stmt->bind_param("sids", $tipo_entidad, $entidad_id, $monto_recibo, $fecha);
@@ -177,28 +187,30 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 
     // 3. NOTA DE CRÉDITO
-    // RESTA deuda al cliente (ej: Devolución de mercadería, error de facturación).
+    // Se usa para anular facturas o hacer descuentos. RESTA deuda.
     if (isset($_POST['accion']) && $_POST['accion'] == 'nota_credito') {
         $factura_id = $_POST['factura_id'];
         $monto = $_POST['monto'];
         $fecha = $_POST['fecha'];
 
+        // Revisamos la factura original.
         $qry = $conexion->query("SELECT * FROM transacciones WHERE id = $factura_id");
         $factura = $qry->fetch_assoc();
 
+        // No podemos descontar más de lo que debe.
         if ($monto > $factura['saldo_pendiente']) {
             $error = "Error: La Nota de Crédito ($$monto) no puede superar el saldo pendiente ($" . $factura['saldo_pendiente'] . ").";
         } else {
             $tipo_entidad = $factura['tipo_entidad'];
             $entidad_id = $factura['entidad_id'];
 
-            // Registramos la NC vinculada a la factura
+            // Registramos la NC vinculada.
             $sql = "INSERT INTO transacciones (tipo, tipo_entidad, entidad_id, monto, fecha, transaccion_relacionada_id, estado) VALUES ('nota_credito', ?, ?, ?, ?, ?, 1)";
             $stmt = $conexion->prepare($sql);
             $stmt->bind_param("sidsi", $tipo_entidad, $entidad_id, $monto, $fecha, $factura_id);
 
             if ($stmt->execute()) {
-                // REDUCIMOS el saldo pendiente de la factura (Como si fuera un pago)
+                // REDUCIMOS el saldo pendiente de la factura (Igual que un pago).
                 $nuevo_saldo = $factura['saldo_pendiente'] - $monto;
                 $upd = $conexion->prepare("UPDATE transacciones SET saldo_pendiente = ? WHERE id = ?");
                 $upd->bind_param("di", $nuevo_saldo, $factura_id);
@@ -211,26 +223,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 
     // 4. BORRAR TRANSACCIÓN (SOLO ADMIN)
-    // Permite eliminar documentos erróneos y restarurar saldos.
+    // Permite eliminar errores.
     if (isset($_POST['accion']) && $_POST['accion'] == 'borrar_transaccion') {
         if (es_admin()) {
             $id = $_POST['id'];
 
-            // Obtenemos la transacción antes de borrarla
+            // Buscamos qué estamos borrando.
             $qry = $conexion->query("SELECT * FROM transacciones WHERE id = $id");
             if ($qry->num_rows > 0) {
                 $transaccion = $qry->fetch_assoc();
 
-                // Soft Delete (estado = 0)
+                // Borramos (Soft Delete) la transacción.
                 $conexion->query("UPDATE transacciones SET estado = 0 WHERE id = $id");
 
-                // LOGICA DE RESTAURACIÓN:
-                // Si borramos un RECIBO o una NOTA DE CRÉDITO que estaba aplicada a una factura...
-                // ... debemos VOLVER A AUMENTAR la deuda de esa factura.
+                // LÓGICA DE RESTAURACIÓN DE DEUDA:
+                // Si borramos un PAGO (Recibo) o un DESCUENTO (NC) que afectó a una factura...
+                // ... esa factura vuelve a deber plata. Hay que devolverle el saldo.
                 if (($transaccion['tipo'] == 'recibo' || $transaccion['tipo'] == 'nota_credito') && $transaccion['transaccion_relacionada_id']) {
                     $factura_id = $transaccion['transaccion_relacionada_id'];
                     $monto_restaurar = $transaccion['monto'];
 
+                    // Devolvemos el monto al saldo pendiente de la factura original.
                     $conexion->query("UPDATE transacciones SET saldo_pendiente = saldo_pendiente + $monto_restaurar WHERE id = $factura_id");
                     $mensaje = "Documento eliminado. Saldo de factura restaurado.";
                 } else {
@@ -243,9 +256,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// --- LÓGICA DE VISTAS (QUÉ MOSTRAMOS EN PANTALLA) ---
-// View 1: 'seleccion' -> Muestra lista de clientes/proveedores
-// View 2: 'detalle'   -> Muestra las facturas del cliente seleccionado
+// --- LÓGICA DE VISTAS (QUÉ PANTALLA MOSTRAMOS) ---
+// View 1: 'seleccion' -> Muestra lista de gente para elegir.
+// View 2: 'detalle'   -> Muestra las facturas y botones de acción de una persona.
 
 $vista = isset($_GET['vista']) ? $_GET['vista'] : 'seleccion';
 $tipo_entidad = isset($_GET['tipo']) ? $_GET['tipo'] : 'cliente';
@@ -253,7 +266,7 @@ $entidad_id = isset($_GET['id']) ? $_GET['id'] : null;
 
 $entidad_data = null;
 if ($entidad_id) {
-    // Buscamos los datos del cliente/proveedor elegido
+    // Si ya elegimos a alguien, traemos sus nombre y datos básicos.
     $tabla = ($tipo_entidad == 'cliente') ? 'clientes' : 'proveedores';
     $res = $conexion->query("SELECT * FROM $tabla WHERE id = $entidad_id");
     $entidad_data = $res->fetch_assoc();
@@ -372,9 +385,11 @@ if ($entidad_id) {
                         </thead>
                         <tbody>
                             <?php
-                            // CONSULTA CLAVE:
-                            // Traemos Facturas y Notas de Débito (que generan deuda).
-                            // También traemos Recibos "sin imputar" (Pagos a cuenta que sobran).
+                            // CONSULTA CLAVE PARA LA TABLA:
+                            // Queremos ver:
+                            // 1. Facturas y Notas de Débito (Documentos que generan deuda).
+                            // 2. Recibos "sueltos" o generales (Pagos a cuenta que no están imputados a nada específico).
+                            // NO mostramos aquí los Recibos/NC que ya están vinculados a una factura, para no ensuciar la lista principal.
                             $sql = "SELECT * FROM transacciones WHERE (tipo IN ('factura', 'nota_debito') OR (tipo = 'recibo' AND transaccion_relacionada_id IS NULL)) AND tipo_entidad = '$tipo_entidad' AND entidad_id = $entidad_id AND estado = 1 ORDER BY fecha DESC";
                             $facturas = $conexion->query($sql);
 
@@ -383,35 +398,39 @@ if ($entidad_id) {
                                     $es_factura_nd = in_array($f['tipo'], ['factura', 'nota_debito']);
                                     $es_recibo = $f['tipo'] == 'recibo';
 
-                                    // Variables de visualización
+                                    // Preparamos los textos para que se vean lindos en pantalla
                                     $tipo_doc = ucfirst(str_replace('_', ' ', $f['tipo']));
                                     $condicion_texto = '-';
                                     $saldo_texto = '-';
                                     $clase_estado = 'text-white';
                                     $texto_estado = '-';
 
-                                    // Lógica visual para Facturas y ND
+                                    // LÓGICA DE ESTADOS VISUALES (Semáforo de colores)
                                     if ($es_factura_nd) {
                                         $es_contado = $f['condicion_pago'] == 'contado';
-                                        $pagada = $f['saldo_pendiente'] <= 0; // Si saldo es 0 o menos, está pagada
+                                        $pagada = $f['saldo_pendiente'] <= 0; // Si el saldo es 0, ya está pagada.
                         
-                                        // Chequeamos si fue anulada por Nota de Crédito completa
+                                        // Verificamos si fue ANULADA por una Nota de Crédito completa.
                                         $anulada_por_nc = false;
                                         if ($pagada && !$es_contado) {
+                                            // Buscamos si tiene NC asociadas que sumen el total.
                                             $chk_nc = $conexion->query("SELECT SUM(monto) as total_nc FROM transacciones WHERE transaccion_relacionada_id = {$f['id']} AND tipo = 'nota_credito' AND estado = 1");
                                             $row_nc = $chk_nc->fetch_assoc();
-                                            // Si la suma de las NC cubre o supera el monto original, es anulada
+                                            
                                             if ($row_nc['total_nc'] >= $f['monto'])
                                                 $anulada_por_nc = true;
                                         }
 
+                                        // Definimos el color y el texto según el estado.
                                         $clase_estado = $pagada ? 'text-success' : 'text-danger';
                                         $texto_estado = $pagada ? 'PAGADA' : 'PENDIENTE';
+                                        
                                         if ($es_contado)
                                             $texto_estado = 'PAGADA (Contado)';
+                                        
                                         if ($anulada_por_nc) {
                                             $texto_estado = 'ANULADA POR NC';
-                                            $clase_estado = 'text-warning';
+                                            $clase_estado = 'text-warning'; // Amarillo
                                         }
 
                                         $condicion_texto = ucfirst(str_replace('_', ' ', $f['condicion_pago']));
@@ -432,26 +451,28 @@ if ($entidad_id) {
                                         <td class="fw-bold"><?php echo $saldo_texto; ?></td>
                                         <td class="<?php echo $clase_estado; ?> fw-bold"><?php echo $texto_estado; ?></td>
                                         <td>
-                                            <!-- Botón Pagar (Solo si debe plata y no es contado) -->
+                                            <!-- Botones de Acción -->
+                                            
+                                            <!-- 1. Pagar (Solo si debe plata y no es contado) -->
                                             <?php if ($es_factura_nd && !$es_contado && !$pagada): ?>
                                                 <button class="btn btn-sm btn-success"
                                                     onclick="abrirRecibo(<?php echo $f['id']; ?>, <?php echo $f['saldo_pendiente']; ?>)">Recibo</button>
                                             <?php endif; ?>
 
-                                            <!-- Botón Nota Crédito (Para anular o descontar) -->
+                                            <!-- 2. Nota de Crédito (Para anular o descontar) -->
                                             <?php if ($es_factura_nd && !$pagada): ?>
                                                 <button class="btn btn-sm btn-warning"
                                                     onclick="abrirNC(<?php echo $f['id']; ?>, <?php echo $f['saldo_pendiente']; ?>)">Nota
                                                     Crédito</button>
                                             <?php endif; ?>
 
-                                            <!-- Ver relacionados (pagos, NCs vinculadas) -->
+                                            <!-- 3. Ver relacionados (pagos ya hechos, NCs vinculadas) -->
                                             <?php if ($es_factura_nd): ?>
                                                 <button class="btn btn-sm btn-info" onclick="verRelacionados(<?php echo $f['id']; ?>)"
                                                     title="Ver Documentos Relacionados"><i class="fas fa-eye"></i></button>
                                             <?php endif; ?>
 
-                                            <!-- BORRAR (Solo Admin) -->
+                                            <!-- 4. BORRAR (Solo el Admin puede borrar cosas) -->
                                             <?php if (es_admin()): ?>
                                                 <form method="POST" style="display:inline;"
                                                     onsubmit="return confirm('¿Borrar este documento? <?php echo $es_recibo ? "Se restaurará el saldo de la factura si aplica." : "Se perderá el historial visible."; ?>')">

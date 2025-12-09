@@ -1,49 +1,60 @@
 <?php
-// index.php - Pantalla de Login (Acceso)
-// Este archivo procesa el ingreso de los usuarios al sistema.
+// index.php - Página de Inicio de Sesión (Login)
+// Esta es la primera pantalla que ven los usuarios. Aquí ponen su usuario y contraseña para entrar.
 
-require_once 'config.php'; // Incluimos la conexión a la base de datos
-session_start();           // Iniciamos la sesión para poder guardar datos del usuario
+require_once 'config.php'; // Traemos las credenciales para conectar a la base de datos.
+session_start();           // Iniciamos la memoria temporal (sesión).
 
-// 1. Si el usuario ya está logueado, lo mandamos directo al dashboard
+// Paso 1: Revisar si ya había entrado antes
+// Si el sistema recuerda al usuario (existe 'usuario_id'), no lo hacemos loguear de nuevo.
 if (isset($_SESSION['usuario_id'])) {
+    // Lo enviamos directo al panel principal.
     header("Location: dashboard.php");
-    exit;
+    exit; // Detenemos este archivo aquí.
 }
 
-$error = ""; // Variable para guardar mensajes de error si falla el login
+$error = ""; // Preparamos una variable vacía para mostrar errores (como contraseña mal escrita).
 
-// 2. ¿Se envió el formulario? (Se usó POST)
+// Paso 2: Detectar si el usuario presionó el botón "Ingresar"
+// Cuando se llena el formulario, los datos viajan ocultos (método POST).
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $usuario = $_POST['usuario']; // Capturamos lo que escribió en "usuario"
-    $clave = $_POST['clave'];     // Capturamos lo que escribió en "contraseña"
+    // Recibimos lo que escribió en las cajas de texto.
+    $usuario = $_POST['usuario'];
+    $clave = $_POST['clave'];
 
-    // 3. Preparamos la consulta SQL para buscar al usuario
-    // Usamos '?' para evitar que nos hackeen (SQL Injection)
+    // Paso 3: Buscar al usuario en la base de datos
+    // Preparamos una pregunta segura (SQL) para la base de datos.
+    // Buscamos alguien con ese nombre de usuario y que esté activo (estado = 1).
     $sql = "SELECT id, usuario, clave, rol FROM usuarios WHERE usuario = ? AND estado = 1";
     $stmt = $conexion->prepare($sql);
-    $stmt->bind_param("s", $usuario);
-    $stmt->execute();
-    $resultado = $stmt->get_result();
+    $stmt->bind_param("s", $usuario); // Rellenamos el '?' con el dato real de forma segura.
+    $stmt->execute();                 // Hacemos la búsqueda.
+    $resultado = $stmt->get_result(); // Tomamos la respuesta.
 
-    // 4. Verificamos si encontramos al usuario
+    // Paso 4: Verificar si encontramos a alguien
     if ($resultado->num_rows === 1) {
+        // Si encontramos 1 usuario, leemos sus datos.
         $fila = $resultado->fetch_assoc();
 
-        // 5. Verificamos si la contraseña coincide (está encriptada/hash)
+        // Paso 5: Verificar la contraseña
+        // Comparamos la contraseña escrita con la clave secreta guardada (está encriptada).
         if (password_verify($clave, $fila['clave'])) {
-            // ¡Login Exitoso! Guardamos datos en la sesión
+            // ¡Contraseña correcta!
+
+            // Guardamos los datos en la sesión para recordarlo en otras páginas.
             $_SESSION['usuario_id'] = $fila['id'];
             $_SESSION['usuario'] = $fila['usuario'];
-            $_SESSION['rol'] = $fila['rol']; // 'admin' o 'usuario'
+            $_SESSION['rol'] = $fila['rol']; // Guardamos si es admin o usuario normal.
 
-            // Lo mandamos al panel principal
+            // Lo llevamos al Dashboard.
             header("Location: dashboard.php");
             exit;
         } else {
+            // Contraseña incorrecta.
             $error = "Contraseña incorrecta.";
         }
     } else {
+        // No existe el usuario o está desactivado.
         $error = "Usuario no encontrado o inactivo.";
     }
 }

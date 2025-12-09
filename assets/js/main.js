@@ -102,7 +102,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 responsive: true,
                 plugins: {
                     legend: {
-                        labels: { color: '#e0e0e0' }
+                        labels: { color: '#000000ff' }
                     }
                 }
             }

@@ -1,37 +1,41 @@
 <?php
-// dashboard.php - Panel Principal
-require_once 'config.php';
-require_once 'auth.php';
-verificar_autenticacion(); // Paso 1: Asegurar que esté logueado
-require_once 'header.php';
+// dashboard.php - Panel de Control Principal
+// Esta es la pantalla principal que ve el usuario al entrar. Muestra un resumen financiero.
 
-// --- CÁLCULO DE FINANZAS ---
-// Inicializamos variables en 0
+require_once 'config.php'; // Conexión a Base de Datos
+require_once 'auth.php';   // Herramientas de seguridad
+verificar_autenticacion(); // ¡Alto! Solo usuarios registrados pueden ver esto.
+
+require_once 'header.php'; // Cargamos la parte de arriba de la página (menú, logos, etc.)
+
+// --- CÁLCULO DE FINANZAS (Resumen de dinero) ---
+// Empezamos asumiendo que no hay movimientos (0 pesos).
 $ingresos = 0;
 $egresos = 0;
 
-// Filtro: Si el usuario eligió fechas en el buscador
+// Paso 1: Revisar si se usó el filtro de fechas
+// Si el usuario eligió "Desde" y "Hasta", filtramos los cálculos.
 $f_desde = isset($_GET['fecha_desde']) ? $_GET['fecha_desde'] : '';
 $f_hasta = isset($_GET['fecha_hasta']) ? $_GET['fecha_hasta'] : '';
 
-$where_fecha = "";
+$where_fecha = ""; // Esta variable guardará la condición extra para la búsqueda (SQL).
 if (!empty($f_desde) && !empty($f_hasta)) {
-    // Agregamos condición SQL para filtrar por rango de fechas
+    // Si hay fechas, le decimos a la base de datos: "Solo busca entre esta fecha y esta otra".
     $where_fecha = " AND fecha BETWEEN '$f_desde' AND '$f_hasta'";
 }
 
-// 1. Calcular INGRESOS
-// Sumamos el monto de todos los RECIBOS hechos a CLIENTES activos
+// Paso 2: Calcular INGRESOS (Dinero que entró)
+// Sumamos todos los 'recibos' de 'clientes' que estén confirmados (estado = 1).
 $sql_ingresos = "SELECT SUM(monto) as total FROM transacciones WHERE tipo = 'recibo' AND tipo_entidad = 'cliente' AND estado = 1" . $where_fecha;
 $res_ingresos = $conexion->query($sql_ingresos);
 if ($row = $res_ingresos->fetch_assoc()) {
-    $ingresos = $row['total'] ?? 0; // Si es null, usamos 0
+    $ingresos = $row['total'] ?? 0; // Si el resultado es vacío, ponemos 0.
 }
 
-// 2. Calcular EGRESOS
-// Sumamos: 
-// a) RECIBOS hechos a PROVEEDORES (Pagos que hicimos)
-// b) GASTOS GENERALES (luz, agua, etc)
+// Paso 3: Calcular EGRESOS (Dinero que salió)
+// Aquí sumamos dos cosas:
+// a) Pagos a proveedores (recibos de proveedores).
+// b) Gastos generales del negocio (luz, alquiler, etc).
 $sql_egresos = "SELECT SUM(monto) as total FROM transacciones WHERE ((tipo = 'recibo' AND tipo_entidad = 'proveedor') OR tipo = 'gasto') AND estado = 1" . $where_fecha;
 $res_egresos = $conexion->query($sql_egresos);
 if ($row = $res_egresos->fetch_assoc()) {

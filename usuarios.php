@@ -1,33 +1,37 @@
 <?php
-// usuarios.php - Gestión de Usuarios (Solo Administradores)
-// Permite crear, editar y eliminar (lógicamente) usuarios del sistema.
+// usuarios.php - Gestión de Usuarios del Sistema (Solo Jefes/Admins)
+// Desde aquí se crean los usuarios que pueden entrar al sistema (vendedores, jefes, etc).
+// IMPORTANTE: Solo los usuarios con rol de 'admin' pueden entrar a esta página.
 
-require_once 'config.php';
-require_once 'auth.php';
-verificar_autenticacion(); // Paso 1: Verificar login
+require_once 'config.php'; // Conexión a la BD
+require_once 'auth.php';   // Seguridad
+verificar_autenticacion(); // Confirmar que esté logueado
 
-// Paso 2: Seguridad - Solo el admin puede entrar aquí
+// Paso de Seguridad Adicional: Checkeo de Admin
+// Preguntamos: "¿Eres admin?". Si no lo es, lo sacamos de aquí.
 if (!es_admin()) {
-    header("Location: dashboard.php"); // Si no es admin, lo echamos al inicio
-    exit;
+    header("Location: dashboard.php"); // Fuera, a la página de inicio.
+    exit; // Detener ejecución.
 }
 
-require_once 'header.php';
+require_once 'header.php'; // Cargar menú visual.
 
-// Inicializamos variables
+// Variables para mensajes
 $mensaje = "";
-$usuario_editar = null; // (Opcional, si quisiéramos precargar datos en PHP, pero usamos JS)
+$usuario_editar = null;
 
-// --- LÓGICA DE FORMULARIOS (POST) ---
+// --- LÓGICA DE CONTROL (Formularios) ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['accion'])) {
 
-        // ACCIÓN 1: CREAR USUARIO
+        // CASO 1: CREAR NUEVO USUARIO
         if ($_POST['accion'] == 'crear') {
             $usuario = $_POST['usuario'];
-            // Hash de contraseña: Convertimos la clave en un código seguro irreversible
+            // IMPORTANTE: Seguridad de Claves
+            // 'password_hash' convierte la contraseña normal (ej: "1234") en un código secreto ilegible.
+            // Nunca guardamos las contraseñas reales en la base de datos por seguridad.
             $clave = password_hash($_POST['clave'], PASSWORD_DEFAULT);
-            $rol = $_POST['rol'];
+            $rol = $_POST['rol']; // 'admin' o 'normal'
 
             $sql = "INSERT INTO usuarios (usuario, clave, rol, estado) VALUES (?, ?, ?, 1)";
             $stmt = $conexion->prepare($sql);
@@ -39,21 +43,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $mensaje = "Error al crear usuario.";
             }
 
-            // ACCIÓN 2: EDITAR USUARIO
+            // CASO 2: EDITAR USUARIO EXISTENTE
         } elseif ($_POST['accion'] == 'editar') {
             $id = $_POST['id'];
             $usuario = $_POST['usuario'];
             $rol = $_POST['rol'];
 
-            // ¿El usuario quiso cambiar la clave? (Si el campo no está vacío)
+            // ¿El usuario quiso cambiar la clave? (Si el campo de contraseña NO está vacío)
             if (!empty($_POST['clave'])) {
-                // Si escribió algo, encriptamos la nueva clave y actualizamos todo
+                // Si escribió una nueva clave, la encriptamos y actualizamos todo (nombre, calve y rol).
                 $clave = password_hash($_POST['clave'], PASSWORD_DEFAULT);
                 $sql = "UPDATE usuarios SET usuario=?, clave=?, rol=? WHERE id=?";
                 $stmt = $conexion->prepare($sql);
                 $stmt->bind_param("sssi", $usuario, $clave, $rol, $id);
             } else {
-                // Si lo dejó vacío, actualizamos solo nombre y rol (mantenemos clave vieja)
+                // Si NO escribió clave (la dejó vacía), solo actualizamos nombre y rol. 
+                // Mantenemos su contraseña vieja tal cual estaba.
                 $sql = "UPDATE usuarios SET usuario=?, rol=? WHERE id=?";
                 $stmt = $conexion->prepare($sql);
                 $stmt->bind_param("ssi", $usuario, $rol, $id);
@@ -65,22 +70,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $mensaje = "Error al actualizar.";
             }
 
-            // ACCIÓN 3: BORRAR USUARIO (Soft Delete)
+            // CASO 3: BORRAR USUARIO
         } elseif ($_POST['accion'] == 'borrar') {
             $id = $_POST['id'];
-            // No borramos el registro (DELETE), solo lo marcamos como inactivo (estado=0)
-            // Esto es 'Soft Delete' para mantener historial.
+            // Borrado Lógico (Papelera):
+            // No lo eliminamos físicamente de la base de datos. Solo le ponemos estado = 0.
+            // Así queda desactivado y no puede entrar más, pero conservamos sus datos históricos.
             $sql = "UPDATE usuarios SET estado=0 WHERE id=?";
             $stmt = $conexion->prepare($sql);
             $stmt->bind_param("i", $id);
             if ($stmt->execute()) {
-                $mensaje = "Usuario eliminado (Soft Delete).";
+                $mensaje = "Usuario eliminado (Desactivado).";
             }
         }
     }
 }
 
-// --- OBTENER LISTA DE USUARIOS ACTIVOS ---
+// --- LISTAR USUARIOS ACTIVOS ---
+// Traemos de la base de datos todos los usuarios con estado = 1.
 $sql = "SELECT * FROM usuarios WHERE estado = 1";
 $resultado = $conexion->query($sql);
 ?>

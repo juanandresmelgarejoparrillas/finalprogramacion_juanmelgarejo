@@ -1,49 +1,56 @@
 <?php
-// clientes.php - Gestión de Clientes
-// Todos pueden ver, pero SOLO ADMIN puede crear, editar o borrar.
+// clientes.php - Gestión de Clientes (Personas que nos compran)
+// En esta página podemos ver la lista de clientes.
+// Además, los Administradores pueden crear nuevos, corregir datos o borrarlos.
 
-require_once 'config.php';
-require_once 'auth.php';
-verificar_autenticacion();
-require_once 'header.php';
+require_once 'config.php'; // Conexión a la base de datos.
+require_once 'auth.php';   // Seguridad de sesión.
+verificar_autenticacion(); // Verificamos que esté logueado.
+require_once 'header.php'; // Parte visual superior.
 
-$mensaje = "";
+$mensaje = ""; // Variable para avisar si salió todo bien o mal.
 
-// --- LÓGICA ABML (Alta, Baja, Modificación) ---
+// --- LÓGICA DE CONTROL (Alta, Baja, Modificación) ---
+// Aquí entramos solo si el usuario apretó algún botón de guardar o borrar (envió el formulario).
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
-    // Paso 1: Verificar permisos
-    // Si NO es admin, le mostramos error y no hacemos nada.
+    // Paso 1: Verificar permisos de Administrador
+    // Solo el jefe (admin) puede hacer cambios. Un usuario normal solo puede mirar.
     if (es_admin()) {
         if (isset($_POST['accion'])) {
 
-            // ACCIÓN 1: CREAR CLIENTE
+            // CASO 1: CREAR UN NUEVO CLIENTE
             if ($_POST['accion'] == 'crear') {
                 $nombre = $_POST['nombre'];
                 $email = $_POST['email'];
                 $telefono = $_POST['telefono'];
 
+                // Insertamos los datos en la tabla 'clientes'.
+                // 'estado = 1' significa que está Activo.
                 $sql = "INSERT INTO clientes (nombre, correo, telefono, estado) VALUES (?, ?, ?, 1)";
                 $stmt = $conexion->prepare($sql);
                 $stmt->bind_param("sss", $nombre, $email, $telefono);
-                $stmt->execute();
+                $stmt->execute(); // ¡Guardado!
 
-                // ACCIÓN 2: EDITAR CLIENTE
+                // CASO 2: CORREGIR/EDITAR UN CLIENTE EXISTENTE
             } elseif ($_POST['accion'] == 'editar') {
-                $id = $_POST['id'];
+                $id = $_POST['id']; // Necesitamos saber el ID para saber a CUÁL corregir.
                 $nombre = $_POST['nombre'];
                 $email = $_POST['email'];
                 $telefono = $_POST['telefono'];
 
+                // Actualizamos los datos donde coincida el ID.
                 $sql = "UPDATE clientes SET nombre=?, correo=?, telefono=? WHERE id=?";
                 $stmt = $conexion->prepare($sql);
                 $stmt->bind_param("sssi", $nombre, $email, $telefono, $id);
-                $stmt->execute();
+                $stmt->execute(); // ¡Actualizado!
 
-                // ACCIÓN 3: BORRAR CLIENTE
+                // CASO 3: BORRAR UN CLIENTE
             } elseif ($_POST['accion'] == 'borrar') {
                 $id = $_POST['id'];
-                // Soft Delete (Estado = 0)
+                // TRUCO: No borramos de verdad la fila (DELETE).
+                // Solo le cambiamos el estado a 0 (Inactivo) para "ocultarlo".
+                // Esto permite no perder el historial de ventas de este cliente.
                 $sql = "UPDATE clientes SET estado=0 WHERE id=?";
                 $stmt = $conexion->prepare($sql);
                 $stmt->bind_param("i", $id);
@@ -51,11 +58,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
     } else {
+        // Si no es admin y trata de guardar, le mostramos este error.
         $mensaje = "No tienes permisos para realizar esta acción.";
     }
 }
 
 
+// --- LECTURA DE DATOS ---
+// Buscamos todos los clientes que estén activos (estado = 1) para mostrarlos en la lista.
 $sql = "SELECT * FROM clientes WHERE estado = 1";
 $resultado = $conexion->query($sql);
 ?>

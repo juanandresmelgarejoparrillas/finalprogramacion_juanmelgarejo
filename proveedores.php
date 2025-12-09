@@ -1,45 +1,52 @@
 <?php
-// proveedores.php - Gestión de Proveedores
-// Mismo funcionamiento que Clientes: Solo Admin crea/edita/borra.
+// proveedores.php - Gestión de Proveedores (A quienes les compramos)
+// Funciona exactamente igual que la página de Clientes.
+// Permite ver la lista, y solo el Admin puede guardar o borrar proveedores.
 
-require_once 'config.php';
-require_once 'auth.php';
-verificar_autenticacion();
-require_once 'header.php';
+require_once 'config.php'; // Conexión a la BD.
+require_once 'auth.php';   // Seguridad.
+verificar_autenticacion(); // Verificar login.
+require_once 'header.php'; // Diseño visual (menú).
 
-$mensaje = "";
+$mensaje = ""; // Para mensajes de éxito o error.
 
+// --- LÓGICA DE CONTROL ---
+// Si se recibió datos por formulario (Botón Guardar/Borrar)
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    // Paso 1: Verificación de Rol
+    // Paso 1: Solo el Admin tiene permiso
     if (es_admin()) {
         if (isset($_POST['accion'])) {
 
-            // ACCIÓN 1: CREAR
+            // CASO 1: CREAR NUEVO PROVEEDOR
             if ($_POST['accion'] == 'crear') {
                 $nombre = $_POST['nombre'];
                 $email = $_POST['email'];
                 $telefono = $_POST['telefono'];
 
+                // Insertamos en la tabla 'proveedores'. Estado 1 = Activo.
                 $sql = "INSERT INTO proveedores (nombre, correo, telefono, estado) VALUES (?, ?, ?, 1)";
                 $stmt = $conexion->prepare($sql);
                 $stmt->bind_param("sss", $nombre, $email, $telefono);
-                $stmt->execute();
+                $stmt->execute(); // Ejecutar guardado.
 
-                // ACCIÓN 2: EDITAR
+                // CASO 2: EDITAR PROVEEDOR EXISTENTE
             } elseif ($_POST['accion'] == 'editar') {
                 $id = $_POST['id'];
                 $nombre = $_POST['nombre'];
                 $email = $_POST['email'];
                 $telefono = $_POST['telefono'];
 
+                // Actualizamos los datos del ID seleccionado.
                 $sql = "UPDATE proveedores SET nombre=?, correo=?, telefono=? WHERE id=?";
                 $stmt = $conexion->prepare($sql);
                 $stmt->bind_param("sssi", $nombre, $email, $telefono, $id);
-                $stmt->execute();
+                $stmt->execute(); // Ejecutar actualización.
 
-                // ACCIÓN 3: BORRAR (Soft Delete)
+                // CASO 3: BORRAR (OCULTAR) PROVEEDOR
             } elseif ($_POST['accion'] == 'borrar') {
                 $id = $_POST['id'];
+                // Borrado Lógico: Cambiamos estado a 0 par que no aparezca en las listas,
+                // pero no lo borramos definitivamente para no perder registro de compras pasadas.
                 $sql = "UPDATE proveedores SET estado=0 WHERE id=?";
                 $stmt = $conexion->prepare($sql);
                 $stmt->bind_param("i", $id);
@@ -52,6 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 
+// --- LISTAR PROVEEDORES ---
+// Buscamos solo los que tienen estado = 1 (Activos).
 $sql = "SELECT * FROM proveedores WHERE estado = 1";
 $resultado = $conexion->query($sql);
 ?>

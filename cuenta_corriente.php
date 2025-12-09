@@ -1,21 +1,27 @@
 <?php
-// cuenta_corriente.php
-require_once 'db.php';
-require_once 'header.php';
+// cuenta_corriente.php - Visor Detallado de Cuenta Corriente
+// Esta página muestra el detalle fino de lo que nos deben (Clientes) o lo que debemos (Proveedores).
+// Diferencia entre "DEBE" (lo que suma deuda) y "HABER" (lo que resta deuda).
 
-$tipo_entidad = $_GET['tipo'] ?? 'cliente';
-$entidad_id = $_GET['id'] ?? 0;
+require_once 'db.php';     // Conexión
+require_once 'header.php'; // Diseño
 
-// Obtener listas para el filtro (clientes/proveedores usan estado, transacciones usa estado)
+// 1. Detectar qué estamos buscando (¿Cliente o Proveedor?)
+$tipo_entidad = $_GET['tipo'] ?? 'cliente'; // Por defecto Cliente
+$entidad_id = $_GET['id'] ?? 0;             // ID específico (si vale 0, no seleccionó nadie aún)
+
+// 2. Traer listas para el filtro (Buscador superior)
 $clientes = $conexion->query("SELECT id, nombre FROM clientes WHERE estado = 1 ORDER BY nombre ASC");
 $proveedores = $conexion->query("SELECT id, nombre FROM proveedores WHERE estado = 1 ORDER BY nombre ASC");
 
+// Variables donde guardaremos los resultados
 $transacciones = [];
 $saldo = 0;
 $entidad_nombre = "";
 
+// 3. Si ya eligieron a alguien ($entidad_id > 0), buscamos su información.
 if ($entidad_id > 0) {
-    // Obtener nombre
+    // a) Buscamos su nombre para el título
     $tabla = ($tipo_entidad == 'cliente') ? 'clientes' : 'proveedores';
     $stmt_nom = $conexion->prepare("SELECT nombre FROM $tabla WHERE id = ?");
     $stmt_nom->bind_param("i", $entidad_id);
@@ -25,48 +31,54 @@ if ($entidad_id > 0) {
         $entidad_nombre = $res_nom->fetch_assoc()['nombre'];
     }
 
-    // Obtener transacciones (usando columnas correctas: 'tipo', 'numero_comprobante')
+    // b) Buscamos sus movimientos (Facturas, Recibos, etc)
+    // Ordenamos por fecha ASC para reconstruir la historia desde el principio.
     $sql = "SELECT * FROM transacciones WHERE tipo_entidad = ? AND entidad_id = ? AND estado IN (0, 1) ORDER BY fecha ASC, id ASC";
     $stmt = $conexion->prepare($sql);
     $stmt->bind_param("si", $tipo_entidad, $entidad_id);
     $stmt->execute();
     $result = $stmt->get_result();
 
-    $saldo_calculo = 0;
+    $saldo_calculo = 0; // Saldo temporal para el cálculo línea por línea
+
+    // Recorremos cada movimiento...
     while ($row = $result->fetch_assoc()) {
         $debe = 0;
         $haber = 0;
         $monto = floatval($row['monto']);
         $tipo = $row['tipo'];
-        $eliminada = $row['estado'] == 0;
+        $eliminada = $row['estado'] == 0; // ¿La transacción fue borrada?
 
-        // CÁLCULO DE SALDOS (ASC) - Bucle para calcular el acumulado fila a fila
+        // CÁLCULO DE SALDOS (Solo sumamos si NO está eliminada)
         if (!$eliminada) {
-            // Caso Cliente:
-            // DEBE = Facturas/ND (Aumenta Deuda del cliente hacia nosotros)
-            // HABER = Recibos/NC (Disminuye Deuda: Pagos o descuentos)
+            
+            // CASO CLIENTE (Ellos nos deben)
             if ($tipo_entidad == 'cliente') {
                 if ($tipo == 'factura' || $tipo == 'nota_debito') {
+                    // Factura AUMENTA deuda (Columna DEBE)
                     $debe = $monto;
-                    $saldo_calculo += $debe; // Aumenta saldo (deuda)
+                    $saldo_calculo += $debe; 
                 } elseif ($tipo == 'recibo' || $tipo == 'nota_credito') {
+                    // Pagos DISMINUYEN deuda (Columna HABER)
                     $haber = $monto;
-                    $saldo_calculo -= $haber; // Disminuye saldo (pago)
+                    $saldo_calculo -= $haber;
                 }
             } else {
-                // Caso Proveedor:
-                // HABER = Facturas (Aumenta Deuda nuestra hacia ellos)
-                // DEBE = Pagos/NC (Disminuye Deuda: Pagamos nosotros)
+                // CASO PROVEEDOR (Nosotros debemos)
+                // Se invierte la lógica:
                 if ($tipo == 'factura' || $tipo == 'nota_debito') {
+                    // Compra (Factura) AUMENTA nuestra deuda (Columna HABER, pasivo)
                     $haber = $monto;
-                    $saldo_calculo += $haber; // Aumenta deuda
+                    $saldo_calculo += $haber;
                 } elseif ($tipo == 'recibo' || $tipo == 'nota_credito') {
+                    // Pago nuestro (Recibo) DISMINUYE deuda (Columna DEBE)
                     $debe = $monto;
-                    $saldo_calculo -= $debe; // Disminuye deuda
+                    $saldo_calculo -= $debe;
                 }
             }
         }
 
+        // Guardamos los valores calculados en la fila para usarlos luego en la tabla HTML
         $row['debe_calc'] = $debe;
         $row['haber_calc'] = $haber;
         $row['saldo_calc'] = $saldo_calculo;
@@ -74,7 +86,8 @@ if ($entidad_id > 0) {
         $transacciones[] = $row;
     }
 
-    // Invertimos para mostrar lo más reciente primero
+    // Invertimos el arreglo para mostrar lo más reciente arriba (DESC),
+    // pero habiendo calculado los saldos correctamente (ASC).
     $transacciones = array_reverse($transacciones);
 }
 ?>
